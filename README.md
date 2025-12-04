@@ -14,6 +14,8 @@ This repository contains the complete source code for **ReviewMe.fun** - an on-c
 |---------|----------------|
 | Mini App SDK setup | `lib/miniapp.ts`, `components/providers/FrameProvider.tsx` |
 | Wallet integration | `lib/wagmi.ts`, `components/providers/RainbowKitProvider.tsx` |
+| RPC fallback | `lib/reviewme-contract.ts`, `lib/rpc.ts` |
+| Local caching | `lib/cache.ts` |
 | Notification system | `lib/notification.server.ts`, `app/api/farcaster/webhook/route.ts` |
 | Smart contracts | `contracts/ReviewMe_v1.02.sol` |
 | Prisma schema | `prisma/schema.prisma` |
@@ -47,17 +49,20 @@ npm run dev
 
 1. [Farcaster Mini App Setup](#1-farcaster-mini-app-setup)
 2. [RainbowKit & Wallet Integration](#2-rainbowkit--wallet-integration)
-3. [Sending Notifications](#3-sending-notifications)
-4. [Deployment via Vercel](#4-deployment-via-vercel)
-5. [Setting up Supabase](#5-setting-up-supabase)
-6. [Creating HUNT-backed Token](#6-creating-hunt-backed-token-via-hunttown)
-7. [Smart Contract Development](#7-smart-contract-development)
-8. [Setting up Farcaster Manifest](#8-setting-up-farcaster-manifest)
-9. [Base.dev Preview Setup](#9-basedev-preview-setup)
-10. [Key SDK Features to Know](#10-key-sdk-features-to-know)
-11. [Sharing Your App](#11-sharing-your-app)
-12. [Authentication](#12-authentication)
-13. [Lessons Learned & Gotchas](#13-lessons-learned--gotchas)
+3. [RPC Fallback Strategy](#3-rpc-fallback-strategy)
+4. [Local Caching Strategy](#4-local-caching-strategy)
+5. [Sending Notifications](#5-sending-notifications)
+6. [Deployment via Vercel](#6-deployment-via-vercel)
+7. [Setting up Supabase](#7-setting-up-supabase)
+8. [Creating HUNT-backed Token](#8-creating-hunt-backed-token-via-hunttown)
+9. [Smart Contract Development](#9-smart-contract-development)
+10. [Setting up Farcaster Manifest](#10-setting-up-farcaster-manifest)
+11. [Base.dev Preview Setup](#11-basedev-preview-setup)
+12. [Key SDK Features to Know](#12-key-sdk-features-to-know)
+13. [Sharing Your App](#13-sharing-your-app)
+14. [Authentication](#14-authentication)
+15. [Lessons Learned & Gotchas](#15-lessons-learned--gotchas)
+16. [Important Guidelines for AI Agents](#16-important-guidelines-for-ai-agents)
 
 ---
 
@@ -121,21 +126,108 @@ For ReviewMe.fun, we used RainbowKit because:
 
 When configuring wagmi connectors, put `farcasterMiniApp()` **first** in the array. This ensures:
 - Auto-connect works in Farcaster client context
-- Users don't see a wallet selection dialog when inside Warpcast
+- Users don't see a wallet selection dialog when inside Farcaster
 - Fallback to other wallets (MetaMask, Coinbase, etc.) in browser
-
-### RPC Fallback Strategy
-
-We learned to configure **multiple fallback RPC endpoints** for reliability:
-- Public Base RPC endpoints get rate-limited
-- Use 5-10 fallback endpoints with short timeouts
-- Consider paid RPC (Alchemy, QuickNode) for production
-
-**Reference**: See `lib/reviewme-contract.ts` for our RPC fallback list.
 
 ---
 
-## 3. Sending Notifications
+## 3. RPC Fallback Strategy
+
+### Why Fallback is Essential
+
+Public Base RPC endpoints get rate-limited frequently. Without fallback, your app becomes unusable when the primary RPC fails.
+
+**Reference**: See `lib/reviewme-contract.ts` and `lib/rpc.ts`
+
+### ReviewMe's RPC Endpoint List
+
+We use 10+ fallback endpoints with automatic rotation:
+
+```
+https://base-rpc.publicnode.com
+https://base.drpc.org
+https://base.llamarpc.com
+https://base.meowrpc.com
+https://mainnet.base.org
+https://developer-access-mainnet.base.org
+https://base-mainnet.public.blastapi.io
+https://base-public.nodies.app
+https://rpc.poolz.finance/base
+https://api.zan.top/base-mainnet
+https://1rpc.io/base
+https://endpoints.omniatech.io/v1/base/mainnet/public
+https://base.public.blockpi.network/v1/rpc/public
+```
+
+### Implementation Pattern
+
+**Key principles:**
+1. **Create ONE reusable module** - Don't copy RPC logic to multiple places
+2. **Use wagmi's `fallback()` transport** - Sequential fallback with short timeouts
+3. **Set aggressive timeouts** - 2-3 seconds max per endpoint
+4. **Disable retries per endpoint** - Move to next endpoint immediately on failure
+5. **Allow custom RPC via env** - `NEXT_PUBLIC_BASE_RPC_URL` gets highest priority
+
+### Configuration Tips
+
+| Setting | Recommended Value | Reason |
+|---------|-------------------|--------|
+| Timeout | 2,000ms | Fail fast, try next |
+| Retry count | 0 | Don't waste time retrying failed endpoint |
+| Rank mode | `false` | Sequential order, not performance-based |
+
+---
+
+## 4. Local Caching Strategy
+
+### Why Cache Aggressively?
+
+In ReviewMe, we reduced RPC calls by 80%+ with proper caching:
+- Reviews are immutable (cache forever)
+- Transaction hashes never change (cache forever)
+- Profiles change rarely (cache 1 hour)
+- Recent data needs refresh (cache 1-5 minutes)
+
+**Reference**: See `lib/cache.ts` for our complete caching implementation.
+
+### Cache Architecture
+
+| Data Type | Storage | TTL | Reason |
+|-----------|---------|-----|--------|
+| Individual reviews | IndexedDB | 24 hours | Large objects, immutable |
+| Transaction hashes | localStorage | Forever | Small, immutable |
+| User profiles (Neynar) | IndexedDB | 1 hour | Can change, moderate size |
+| Recent reviews list | IndexedDB | 1 minute | Needs freshness |
+| Reviews per wallet | IndexedDB | 5 minutes | Balance freshness vs. load |
+
+### IndexedDB for Large Data
+
+Use IndexedDB (not localStorage) for:
+- Large objects (reviews with content)
+- Collections of data
+- Anything over 5KB
+
+### Cache Pattern for Neynar API Calls
+
+**Strategy:**
+1. Check IndexedDB cache first
+2. If hit and not expired → return cached
+3. If miss or expired → fetch from Neynar API
+4. Store result in cache (including `null` for non-existent users)
+5. Return result
+
+**Important**: Cache `null` results too! If a wallet has no Farcaster profile, cache that fact to avoid repeated API calls.
+
+### Garbage Collection
+
+Run cache cleanup on app initialization:
+- Delete entries older than 7 days
+- Delete expired entries
+- Increment DB version to force reset when schema changes
+
+---
+
+## 5. Sending Notifications
 
 **Official Docs**: [miniapps.farcaster.xyz/docs/guides/notifications](https://miniapps.farcaster.xyz/docs/guides/notifications)
 
@@ -147,11 +239,6 @@ We chose **self-hosted notifications** for ReviewMe.fun:
 |----------|------|------------|
 | **Neynar Managed** | $9-249/month | Low - they handle webhooks |
 | **Self-Hosted** | $0 (Supabase free tier) | Medium - you store tokens |
-
-Self-hosted approach:
-1. Receive webhook at `/api/farcaster/webhook` when users add/remove your app
-2. Store notification tokens in your database (we use Prisma + Supabase)
-3. POST directly to Farcaster's notification endpoint when sending
 
 **Reference**: See `lib/notification.server.ts` and `app/api/farcaster/webhook/route.ts`
 
@@ -170,11 +257,9 @@ Handle these four events:
 - `notifications_enabled` - Save new token
 - `notifications_disabled` - Delete token
 
-Use `@farcaster/miniapp-node` with `parseWebhookEvent` and `verifyAppKeyWithNeynar` for secure webhook handling.
-
 ---
 
-## 4. Deployment via Vercel
+## 6. Deployment via Vercel
 
 ### Environment Variables
 
@@ -185,9 +270,9 @@ Use `@farcaster/miniapp-node` with `parseWebhookEvent` and `verifyAppKeyWithNeyn
 | `DATABASE_URL` | Server only | Supabase/Postgres |
 | `CRON_SECRET` | Server only | Secure cron endpoints |
 
-> ⚠️ Never expose `NEYNAR_API_KEY` as `NEXT_PUBLIC_` - it's server-side only.
-
 **Reference**: See `.env.example` for all available environment variables.
+
+> ⚠️ Never expose `NEYNAR_API_KEY` as `NEXT_PUBLIC_` - it's server-side only.
 
 ### Cron Jobs
 
@@ -195,13 +280,11 @@ Vercel supports cron jobs via `vercel.json`. We use them for:
 - Weekly summary notifications (Sunday 8 PM UTC)
 - Daily leaderboard updates (9 AM UTC)
 
-Secure cron endpoints with `CRON_SECRET` or Vercel's built-in authorization.
-
 **Reference**: See `vercel.json` for cron configuration.
 
 ---
 
-## 5. Setting up Supabase
+## 7. Setting up Supabase
 
 **Official Docs**: [supabase.com/docs](https://supabase.com/docs)
 
@@ -212,20 +295,11 @@ For ReviewMe.fun notifications:
 - PostgreSQL with Prisma ORM
 - 500 MB database, 5 GB bandwidth/month
 
-### Schema Design
-
-Our notification schema stores:
-- User FID (unique identifier)
-- Notification token + URL (from Farcaster webhook)
-- Notification log (for deduplication and analytics)
-
-Use Prisma for migrations: `npx prisma migrate dev`
-
 **Reference**: See `prisma/schema.prisma` for our database schema.
 
 ---
 
-## 6. Creating HUNT-backed Token via Hunt.Town
+## 8. Creating HUNT-backed Token via Hunt.Town
 
 **Launch at**: [hunt.town](https://hunt.town/)
 
@@ -244,19 +318,11 @@ Use Prisma for migrations: `npx prisma migrate dev`
 | HUNT Token | `0x37f0c2915CeCC7e977183B8543Fc0864d03E064C` |
 | Mint.club Bond | `0xc5a076cad94176c2996B32d8466Be1cE757FAa27` |
 
-Your smart contract interacts with the Mint.club Bond to mint tokens on the bonding curve.
-
 ---
 
-## 7. Smart Contract Development
+## 9. Smart Contract Development
 
 **Foundry Docs**: [book.getfoundry.sh](https://book.getfoundry.sh)
-
-### Our Stack
-
-- **Foundry** for development, testing, deployment
-- **OpenZeppelin** for security primitives (ReentrancyGuard, SafeERC20)
-- **Remix** as alternative deployment option
 
 **Reference**: See `contracts/` directory for all smart contracts.
 
@@ -267,22 +333,11 @@ Your smart contract interacts with the Mint.club Bond to mint tokens on the bond
 3. **Use `tx.origin`**: For reviewer attribution when contract calls come through the app
 4. **Fork testing**: Use `vm.createSelectFork("base_mainnet")` to test against real state
 
-### Deployment Options
-
-1. **Forge Script**: `forge script scripts/Deploy.s.sol --rpc-url base_mainnet --broadcast --verify`
-2. **Remix**: Connect MetaMask, compile with 0.8.20, optimization enabled (200 runs)
-
-### Verification
-
-```bash
-forge verify-contract <ADDRESS> ContractName --chain-id 8453 --etherscan-api-key $BASESCAN_API_KEY
-```
-
 **Reference**: See `docs/DEPLOYMENT.md` and `docs/CONTRACT.md` for detailed guides.
 
 ---
 
-## 8. Setting up Farcaster Manifest
+## 10. Setting up Farcaster Manifest
 
 **Official Docs**: [miniapps.farcaster.xyz/docs/guides/publishing](https://miniapps.farcaster.xyz/docs/guides/publishing)
 
@@ -290,29 +345,21 @@ forge verify-contract <ADDRESS> ContractName --chain-id 8453 --etherscan-api-key
 
 Use the manifest tool: [farcaster.xyz/~/developers/mini-apps/manifest](https://farcaster.xyz/~/developers/mini-apps/manifest)
 
-> ⚠️ Domain in manifest must **exactly match** your hosting domain.
-
-### Manifest Location
-
-Host at `/.well-known/farcaster.json` or use Farcaster's hosted manifest service with a redirect.
-
 **Reference**: See `public/.well-known/farcaster.json` for our manifest template.
 
-### Required vs Optional Fields
+> ⚠️ Domain in manifest must **exactly match** your hosting domain.
 
-**Required**: `version`, `name`, `iconUrl`, `homeUrl`
+### Force Refresh Manifest
 
-**For App Store Discovery**: Add `description`, `screenshotUrls`, `primaryCategory`, `tags`
+After updating your manifest, force Farcaster to re-fetch it:
 
-**For Notifications**: Add `webhookUrl`
+**Path**: Farcaster → Developers → Manifests → Refresh
 
-### Force Refresh
-
-After updating manifest: Warpcast → Settings → Developer Tools → Domains → Refresh
+(Select your domain and click refresh to pull the latest manifest)
 
 ---
 
-## 9. Base.dev Preview Setup
+## 11. Base.dev Preview Setup
 
 **Preview Tool**: [base.dev/preview](https://www.base.dev/preview)
 
@@ -331,7 +378,7 @@ Also use Farcaster's official tools:
 
 ---
 
-## 10. Key SDK Features to Know
+## 12. Key SDK Features to Know
 
 **Full SDK Reference**: [miniapps.farcaster.xyz/docs/sdk](https://miniapps.farcaster.xyz/docs/sdk)
 
@@ -354,19 +401,9 @@ Also use Farcaster's official tools:
 | `sdk.actions.viewToken()` | View token details |
 | `sdk.actions.viewProfile()` | View Farcaster profile |
 
-### Utility Features
-
-| Feature | Purpose |
-|---------|---------|
-| `sdk.haptics.*` | Haptic feedback (impact, notification, selection) |
-| `sdk.back.*` | Back navigation integration |
-| `sdk.isInMiniApp()` | Detect mini app environment |
-| `sdk.getCapabilities()` | Check host capabilities |
-| `sdk.context` | Get user, client, and location info |
-
 ---
 
-## 11. Sharing Your App
+## 13. Sharing Your App
 
 **Official Docs**: [miniapps.farcaster.xyz/docs/guides/sharing](https://miniapps.farcaster.xyz/docs/guides/sharing)
 
@@ -380,15 +417,9 @@ Key requirements:
 - Button title max 32 characters
 - Use PNG format for best compatibility
 
-### Universal Links
-
-Your app gets a canonical URL: `https://farcaster.xyz/miniapps/<app-id>/<app-slug>`
-
-Find it in: Developers page → kebab menu → "Copy link to mini app"
-
 ---
 
-## 12. Authentication
+## 14. Authentication
 
 **Official Docs**: [miniapps.farcaster.xyz/docs/guides/auth](https://miniapps.farcaster.xyz/docs/guides/auth)
 
@@ -400,27 +431,20 @@ Simplest approach - handles token management automatically:
 const res = await sdk.quickAuth.fetch('https://your-api.com/me');
 ```
 
-Server-side validation with `@farcaster/quick-auth`:
-- Verify JWT with `client.verifyJwt({ token, domain })`
-- Get user FID from `payload.sub`
-
-### Performance Tip
-
-Add preconnect hint: `<link rel="preconnect" href="https://auth.farcaster.xyz" />`
-
 ---
 
-## 13. Lessons Learned & Gotchas
+## 15. Lessons Learned & Gotchas
 
 ### From Building ReviewMe.fun
 
 1. **Call `ready()` early** - Show skeleton UI, then load data
 2. **RPC fallback is essential** - Public endpoints get rate-limited
-3. **Farcaster connector first** - Ensures auto-connect in Warpcast
+3. **Farcaster connector first** - Ensures auto-connect in Farcaster client
 4. **Self-hosted notifications work** - Supabase free tier is sufficient
 5. **Pagination in contracts** - Prevents gas limit errors at scale
-6. **IndexedDB caching** - Reduces RPC calls significantly
+6. **IndexedDB caching** - Reduces RPC calls by 80%+
 7. **Test on production domain** - Many features only work there
+8. **Cache null results** - Avoid repeated API calls for non-existent data
 
 ### Common Mistakes
 
@@ -430,9 +454,13 @@ Add preconnect hint: `<link rel="preconnect" href="https://auth.farcaster.xyz" /
 | `addMiniApp()` fails | Must use production domain |
 | Webhook verification fails | Check `NEYNAR_API_KEY` is set |
 | Notifications not received | Verify `webhookUrl` in manifest |
-| Wrong network | Use Base Mainnet (Chain ID: 8453) |
+| RPC rate limited | Implement fallback with multiple endpoints |
 
-### AI/LLM Pitfalls
+---
+
+## 16. Important Guidelines for AI Agents
+
+### ⚠️ Critical Rules
 
 From the [official checklist](https://miniapps.farcaster.xyz/docs/guides/agents-checklist):
 
@@ -441,6 +469,94 @@ From the [official checklist](https://miniapps.farcaster.xyz/docs/guides/agents-
 - **DO NOT** use `fc:frame` meta tag for new apps (use `fc:miniapp`)
 - **ALWAYS** use version "1" (not "next")
 - **ALWAYS** verify against official SDK schema
+
+### 📦 Always Use Latest Package Versions
+
+> ⚠️ **AI agents often suggest outdated package versions from training data. ALWAYS check for latest versions.**
+
+When setting up `package.json` for the first time:
+
+1. **Check npm for latest versions** before adding any package:
+   - Visit `https://www.npmjs.com/package/<package-name>` 
+   - Or run `npm show <package-name> version`
+
+2. **Key packages to verify** (versions change frequently):
+   | Package | Check Latest |
+   |---------|--------------|
+   | `@farcaster/miniapp-sdk` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-sdk) |
+   | `@farcaster/miniapp-wagmi-connector` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-wagmi-connector) |
+   | `@farcaster/miniapp-node` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-node) |
+   | `wagmi` | [npm](https://www.npmjs.com/package/wagmi) |
+   | `viem` | [npm](https://www.npmjs.com/package/viem) |
+   | `@rainbow-me/rainbowkit` | [npm](https://www.npmjs.com/package/@rainbow-me/rainbowkit) |
+   | `@tanstack/react-query` | [npm](https://www.npmjs.com/package/@tanstack/react-query) |
+   | `next` | [npm](https://www.npmjs.com/package/next) |
+   | `@prisma/client` | [npm](https://www.npmjs.com/package/@prisma/client) |
+
+3. **Don't trust AI-suggested versions** - They may be months or years outdated
+4. **Check peer dependency compatibility** - Especially for wagmi/viem/rainbowkit which must align
+
+**Example**: Instead of blindly using:
+```json
+"wagmi": "^1.0.0"  // ❌ Old version from AI training data
+```
+Always verify:
+```bash
+npm show wagmi version  // Returns current: 2.x.x
+```
+
+---
+
+### 🚫 Development Anti-Patterns
+
+**1. No Mock/Temp/Fake Code**
+- Never generate placeholder implementations with `// TODO: implement later`
+- Never create fake API responses or mock data for production code
+- If a feature requires external data, implement the actual data fetching
+
+**2. No Hard-Coding Without Proper Logic**
+- Don't hard-code values that should come from configuration or API
+- Always use environment variables for configurable values
+- Implement proper error handling, not just happy-path code
+
+**3. Modularize Reusable Logic**
+- Create ONE shared module for repeated logic (e.g., RPC fallback, caching)
+- Don't copy-paste the same code to multiple places
+- Example: RPC endpoints should be in a single `lib/rpc.ts`, imported everywhere
+
+**4. Confirm Before Heavy Changes**
+- Before implementing features that change architecture (e.g., serverless → server-side)
+- Before adding new dependencies that affect build/deploy
+- Before restructuring database schema
+- **Always ask the project owner** about risks, tradeoffs, and operational impact
+
+### 💡 Lessons from ReviewMe Development
+
+**What Worked Well:**
+- Starting with a simple contract, iterating based on real usage
+- Using Vercel's serverless for zero-ops deployment
+- IndexedDB + localStorage caching strategy
+- Self-hosted notifications (no monthly cost)
+- Multiple RPC fallback endpoints
+
+**What Caused Problems:**
+- Initial single RPC endpoint → constant failures
+- Not caching null results → excessive API calls
+- Large getter functions without pagination → gas limit errors
+- Testing only on localhost → missed production-only bugs
+
+**Architecture Decisions That Matter:**
+- **Serverless vs Server**: Serverless is simpler for small apps. If you need WebSockets, persistent connections, or heavy background jobs, discuss with owner first.
+- **Self-hosted vs Managed**: Self-hosted notifications saved ~$100/month but required more initial setup.
+- **Client-side vs Server-side RPC**: Client-side reduces server load but exposes RPC endpoints. Server-side is more secure but adds latency.
+
+### 📋 Before Starting Any Task
+
+1. **Understand the existing architecture** - Read relevant files before proposing changes
+2. **Check for existing utilities** - Don't recreate what already exists
+3. **Verify with official docs** - SDK and API patterns change; always check latest docs
+4. **Consider operational impact** - Will this change affect monitoring, costs, or maintenance?
+5. **Ask if uncertain** - Better to clarify than to implement incorrectly
 
 ---
 
@@ -452,6 +568,7 @@ From the [official checklist](https://miniapps.farcaster.xyz/docs/guides/agents-
 - [SDK Reference](https://miniapps.farcaster.xyz/docs/sdk)
 - [Notifications Guide](https://miniapps.farcaster.xyz/docs/guides/notifications)
 - [Publishing Guide](https://miniapps.farcaster.xyz/docs/guides/publishing)
+- [AI Agent Checklist](https://miniapps.farcaster.xyz/docs/guides/agents-checklist)
 
 ### Developer Tools
 - [Developer Mode](https://farcaster.xyz/~/settings/developer-tools)
