@@ -481,17 +481,44 @@ When setting up `package.json` for the first time:
    - Or run `npm show <package-name> version`
 
 2. **Key packages to verify** (versions change frequently):
+
+   **Core Framework & Runtime:**
+   | Package | Check Latest | Notes |
+   |---------|--------------|-------|
+   | `node` | [nodejs.org](https://nodejs.org/) | Mini Apps require 22.11.0+ |
+   | `next` | [npm](https://www.npmjs.com/package/next) | Check App Router compatibility |
+   | `react` | [npm](https://www.npmjs.com/package/react) | Must match Next.js requirements |
+   | `react-dom` | [npm](https://www.npmjs.com/package/react-dom) | Same version as react |
+   | `typescript` | [npm](https://www.npmjs.com/package/typescript) | |
+
+   **Farcaster Mini App:**
    | Package | Check Latest |
    |---------|--------------|
    | `@farcaster/miniapp-sdk` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-sdk) |
    | `@farcaster/miniapp-wagmi-connector` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-wagmi-connector) |
    | `@farcaster/miniapp-node` | [npm](https://www.npmjs.com/package/@farcaster/miniapp-node) |
-   | `wagmi` | [npm](https://www.npmjs.com/package/wagmi) |
-   | `viem` | [npm](https://www.npmjs.com/package/viem) |
-   | `@rainbow-me/rainbowkit` | [npm](https://www.npmjs.com/package/@rainbow-me/rainbowkit) |
-   | `@tanstack/react-query` | [npm](https://www.npmjs.com/package/@tanstack/react-query) |
-   | `next` | [npm](https://www.npmjs.com/package/next) |
+   | `@farcaster/quick-auth` | [npm](https://www.npmjs.com/package/@farcaster/quick-auth) |
+
+   **Web3 / Wallet:**
+   | Package | Check Latest | Notes |
+   |---------|--------------|-------|
+   | `wagmi` | [npm](https://www.npmjs.com/package/wagmi) | v2.x requires viem v2.x |
+   | `viem` | [npm](https://www.npmjs.com/package/viem) | Must align with wagmi |
+   | `@rainbow-me/rainbowkit` | [npm](https://www.npmjs.com/package/@rainbow-me/rainbowkit) | Check wagmi compatibility |
+   | `@tanstack/react-query` | [npm](https://www.npmjs.com/package/@tanstack/react-query) | Required by wagmi |
+
+   **Database & Backend:**
+   | Package | Check Latest |
+   |---------|--------------|
    | `@prisma/client` | [npm](https://www.npmjs.com/package/@prisma/client) |
+   | `prisma` | [npm](https://www.npmjs.com/package/prisma) |
+
+   **UI & Styling:**
+   | Package | Check Latest |
+   |---------|--------------|
+   | `tailwindcss` | [npm](https://www.npmjs.com/package/tailwindcss) |
+   | `framer-motion` | [npm](https://www.npmjs.com/package/framer-motion) |
+   | `lucide-react` | [npm](https://www.npmjs.com/package/lucide-react) |
 
 3. **Don't trust AI-suggested versions** - They may be months or years outdated
 4. **Check peer dependency compatibility** - Especially for wagmi/viem/rainbowkit which must align
