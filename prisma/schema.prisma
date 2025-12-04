@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int      @id @default(autoincrement())
+  fid               Int      @unique
+  notificationToken String?
+  notificationUrl   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([fid])
+}
+
+model NotificationLog {
+  id             Int      @id @default(autoincrement())
+  notificationId String   @unique
+  reviewId       Int?     @unique
+  receivedCount  Int      @default(0)
+  sentAt         DateTime @default(now())
+
+  @@index([sentAt])
+  @@index([reviewId])
+}

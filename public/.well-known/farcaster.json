@@ -1,0 +1,29 @@
+{
+  "accountAssociation": {
+    "header": "YOUR_HEADER_HERE",
+    "payload": "YOUR_PAYLOAD_HERE",
+    "signature": "YOUR_SIGNATURE_HERE"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Your App Name",
+    "homeUrl": "https://your-domain.com",
+    "webhookUrl": "https://your-domain.com/api/farcaster/webhook",
+    "iconUrl": "https://your-domain.com/app-icon.png",
+    "splashImageUrl": "https://your-domain.com/splash-image.png",
+    "splashBackgroundColor": "#ec4899",
+    "subtitle": "Your App Subtitle",
+    "description": "Your app description here.",
+    "primaryCategory": "social",
+    "tags": ["your", "tags", "here"],
+    "heroImageUrl": "https://your-domain.com/hero-image.png",
+    "tagline": "Your Tagline",
+    "ogTitle": "Your App Name",
+    "ogDescription": "Your OG description here.",
+    "ogImageUrl": "https://your-domain.com/og-image.png",
+    "castShareUrl": "https://your-domain.com"
+  },
+  "baseBuilder": {
+    "ownerAddress": "YOUR_WALLET_ADDRESS"
+  }
+}

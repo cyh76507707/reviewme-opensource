@@ -1,0 +1,52 @@
+{
+  "name": "reviewme-fun",
+  "version": "0.4.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:tunnel": "ngrok http 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@decent.xyz/box-common": "^5.0.123",
+    "@farcaster/miniapp-node": "^0.1.11",
+    "@farcaster/miniapp-sdk": "^0.2.1",
+    "@farcaster/miniapp-wagmi-connector": "^1.1.0",
+    "@prisma/client": "^6.19.0",
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-progress": "^1.1.8",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@rainbow-me/rainbowkit": "^2.2.9",
+    "@tanstack/react-query": "^5.90.5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
+    "framer-motion": "^12.23.24",
+    "lucide-react": "^0.294.0",
+    "mint.club-v2-sdk": "^1.4.13",
+    "next": "14.0.0",
+    "postcss": "^8",
+    "prisma": "^6.19.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5",
+    "viem": "^2.38.4",
+    "wagmi": "^2.18.2"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0",
+    "forge-std": "^1.1.2",
+    "ts-node": "^10.9.2"
+  }
+}
